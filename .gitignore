@@ -1,0 +1,24 @@
+# Root Binaries
+/devradar
+/devradar.exe
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test & coverage artifacts
+*.out
+coverage.txt
+profile.out
+
+# Local DevRadar runtime storage directory
+.devradar/
+
+# IDE & OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
