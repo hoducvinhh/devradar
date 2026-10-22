@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 const (
@@ -13,6 +14,12 @@ const (
 	BookmarksFile = "bookmarks.json"
 	CacheFile     = "cache.json"
 )
+
+type Config struct {
+	GitHubToken string    `json:"github_token,omitempty"`
+	DefaultLang string    `json:"default_lang,omitempty"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
 
 type Storage struct {
 	baseDir string
@@ -40,4 +47,8 @@ func NewStorageWithDir(dir string) (*Storage, error) {
 
 func (s *Storage) BaseDir() string {
 	return s.baseDir
+}
+
+func (s *Storage) configPath() string {
+	return filepath.Join(s.baseDir, ConfigFile)
 }
