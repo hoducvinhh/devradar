@@ -45,6 +45,14 @@ var (
 			Render("UNKNOWN")
 )
 
+// osc8Link creates a terminal hyperlink using the standard OSC 8 escape sequence.
+func osc8Link(url, text string) string {
+	if url == "" {
+		return text
+	}
+	return fmt.Sprintf("\x1b]8;;%s\x1b\\%s\x1b]8;;\x1b\\", url, text)
+}
+
 // getTerminalWidth returns current terminal columns or a safe default.
 func getTerminalWidth() int {
 	if w, _, err := term.GetSize(os.Stdout.Fd()); err == nil && w > 40 {
@@ -59,7 +67,7 @@ func getTerminalWidth() int {
 	return 90
 }
 
-// RenderTable renders a styled Lip Gloss table for the list of issues with responsive sizing.
+// RenderTable renders a styled Lip Gloss table for the list of issues with responsive sizing and clickable links.
 func RenderTable(w io.Writer, issues []models.Issue) {
 	if len(issues) == 0 {
 		emptyMsg := lipgloss.NewStyle().
@@ -121,15 +129,18 @@ func RenderTable(w io.Writer, issues []models.Issue) {
 		// Level Badge
 		levelBadge := formatLevelBadge(issue.Difficulty)
 
-		// Repo with stars (truncated safely to prevent overflow)
+		// Repo with stars (truncated safely + clickable via OSC 8)
 		repoDisplay := issue.RepoFullName
 		if issue.RepoStars > 0 {
 			repoDisplay = fmt.Sprintf("%s ★ %s", issue.RepoFullName, formatNumber(issue.RepoStars))
 		}
-		repoDisplay = truncate(repoDisplay, maxRepoLen)
+		repoTruncated := truncate(repoDisplay, maxRepoLen)
+		repoURL := fmt.Sprintf("https://github.com/%s", issue.RepoFullName)
+		repoCell := osc8Link(repoURL, repoTruncated)
 
-		// Title truncated dynamically based on screen width
-		title := truncate(issue.Title, maxTitleLen)
+		// Title truncated dynamically + clickable via OSC 8
+		titleTruncated := truncate(issue.Title, maxTitleLen)
+		titleCell := osc8Link(issue.HTMLURL, titleTruncated)
 
 		// Updated time
 		updated := formatRelativeTime(issue.UpdatedAt)
@@ -139,11 +150,11 @@ func RenderTable(w io.Writer, issues []models.Issue) {
 
 		var row []string
 		if showComments {
-			row = []string{numStr, scoreStr, levelBadge, repoDisplay, title, updated, comments}
+			row = []string{numStr, scoreStr, levelBadge, repoCell, titleCell, updated, comments}
 		} else if showUpdated {
-			row = []string{numStr, scoreStr, levelBadge, repoDisplay, title, updated}
+			row = []string{numStr, scoreStr, levelBadge, repoCell, titleCell, updated}
 		} else {
-			row = []string{numStr, scoreStr, levelBadge, repoDisplay, title}
+			row = []string{numStr, scoreStr, levelBadge, repoCell, titleCell}
 		}
 
 		rows = append(rows, row)
@@ -187,9 +198,31 @@ func RenderTable(w io.Writer, issues []models.Issue) {
 		})
 
 	fmt.Fprintln(w, t)
-	fmt.Fprintf(w, "\n%s Tip: Run '%s' to view detailed match breakdown and instructions.\n",
+
+	// Direct links and full unabbreviated titles
+	fmt.Fprintf(w, "\n%s %s\n",
+		lipgloss.NewStyle().Bold(true).Foreground(infoColor).Render("🔗"),
+		lipgloss.NewStyle().Bold(true).Foreground(headerColor).Render("Direct Links & Full Titles (Ctrl+Click to open in browser):"),
+	)
+	for idx, issue := range issues {
+		numStyle := lipgloss.NewStyle().Bold(true).Foreground(mutedColor)
+		repoStyle := lipgloss.NewStyle().Bold(true).Foreground(infoColor)
+		titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#f1f5f9"))
+		urlStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#38bdf8")).Underline(true)
+
+		fmt.Fprintf(w, "  %s %s#%d: %s\n",
+			numStyle.Render(fmt.Sprintf("[%d]", idx+1)),
+			repoStyle.Render(issue.RepoFullName),
+			issue.Number,
+			titleStyle.Render(issue.Title),
+		)
+		fmt.Fprintf(w, "      ↳ %s\n", urlStyle.Render(issue.HTMLURL))
+	}
+
+	fmt.Fprintf(w, "\n%s Tip: Run '%s' for detailed issue breakdown, or '%s' to show full descriptions.\n",
 		lipgloss.NewStyle().Foreground(infoColor).Bold(true).Render("💡"),
-		lipgloss.NewStyle().Foreground(warningColor).Render("devradar view <issue-url>"))
+		lipgloss.NewStyle().Foreground(warningColor).Render("devradar view <issue-url>"),
+		lipgloss.NewStyle().Foreground(warningColor).Render("devradar find -d"))
 }
 
 func formatLevelBadge(level models.DifficultyLevel) string {

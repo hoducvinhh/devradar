@@ -20,6 +20,7 @@ var (
 	findSort       string
 	findOrder      string
 	findMinStars   int
+	findDetail     bool
 )
 
 var findCmd = &cobra.Command{
@@ -55,6 +56,14 @@ Examples:
 			return fmt.Errorf("discovering issues: %w", err)
 		}
 
+		if findDetail || flagFormat == "detail" {
+			for i := range issues {
+				output.RenderIssueDetail(os.Stdout, &issues[i])
+			}
+			printRateLimitWarning()
+			return nil
+		}
+
 		// Handle output format
 		format := flagFormat
 		switch format {
@@ -86,4 +95,5 @@ func init() {
 	findCmd.Flags().StringVar(&findSort, "sort", "updated", "Sort field: updated, created, comments")
 	findCmd.Flags().StringVar(&findOrder, "order", "desc", "Sort order: desc, asc")
 	findCmd.Flags().IntVar(&findMinStars, "min-stars", 0, "Minimum number of repository stars")
+	findCmd.Flags().BoolVarP(&findDetail, "detail", "d", false, "Display full details, descriptions and tips for all found issues")
 }
