@@ -3,42 +3,41 @@ package output
 import (
 	"fmt"
 	"io"
+	"os"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"github.com/charmbracelet/x/term"
 	"github.com/devradar/devradar/pkg/models"
 )
 
 var (
 	// Styling palettes
-	primaryColor   = lipgloss.Color("#6366f1") // Indigo
-	successColor   = lipgloss.Color("#22c55e") // Emerald Green
-	warningColor   = lipgloss.Color("#f59e0b") // Amber Yellow
-	dangerColor    = lipgloss.Color("#ef4444") // Coral Red
-	infoColor      = lipgloss.Color("#06b6d4") // Cyan
-	mutedColor     = lipgloss.Color("#94a3b8") // Slate Muted
-	headerColor    = lipgloss.Color("#f8fafc") // Bright White
+	primaryColor = lipgloss.Color("#6366f1") // Indigo
+	successColor = lipgloss.Color("#22c55e") // Emerald Green
+	warningColor = lipgloss.Color("#f59e0b") // Amber Yellow
+	dangerColor  = lipgloss.Color("#ef4444") // Coral Red
+	infoColor    = lipgloss.Color("#06b6d4") // Cyan
+	mutedColor   = lipgloss.Color("#94a3b8") // Slate Muted
+	headerColor  = lipgloss.Color("#f8fafc") // Bright White
 
 	badgeBeginner = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#14532d")).
 			Background(lipgloss.Color("#86efac")).
-			Padding(0, 1).
 			Render("BEGINNER")
 
 	badgeIntermediate = lipgloss.NewStyle().
 				Bold(true).
 				Foreground(lipgloss.Color("#78350f")).
 				Background(lipgloss.Color("#fde68a")).
-				Padding(0, 1).
 				Render("INTERMEDIATE")
 
 	badgeAdvanced = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("#701a75")).
 			Background(lipgloss.Color("#f5d0fe")).
-			Padding(0, 1).
 			Render("ADVANCED")
 
 	badgeUnknown = lipgloss.NewStyle().
@@ -46,7 +45,21 @@ var (
 			Render("UNKNOWN")
 )
 
-// RenderTable renders a styled Lip Gloss table for the list of issues.
+// getTerminalWidth returns current terminal columns or a safe default.
+func getTerminalWidth() int {
+	if w, _, err := term.GetSize(os.Stdout.Fd()); err == nil && w > 40 {
+		return w
+	}
+	if w, _, err := term.GetSize(os.Stderr.Fd()); err == nil && w > 40 {
+		return w
+	}
+	if w, _, err := term.GetSize(os.Stdin.Fd()); err == nil && w > 40 {
+		return w
+	}
+	return 90
+}
+
+// RenderTable renders a styled Lip Gloss table for the list of issues with responsive sizing.
 func RenderTable(w io.Writer, issues []models.Issue) {
 	if len(issues) == 0 {
 		emptyMsg := lipgloss.NewStyle().
@@ -57,7 +70,35 @@ func RenderTable(w io.Writer, issues []models.Issue) {
 		return
 	}
 
-	headers := []string{"#", "SCORE", "LEVEL", "REPOSITORY", "ISSUE TITLE", "UPDATED", "COMMENTS"}
+	termWidth := getTerminalWidth() - 2
+	if termWidth > 130 {
+		termWidth = 130
+	} else if termWidth < 75 {
+		termWidth = 75
+	}
+
+	showComments := termWidth >= 115
+	showUpdated := termWidth >= 85
+
+	var headers []string
+	if showComments {
+		headers = []string{"#", "SCORE", "LEVEL", "REPOSITORY", "ISSUE TITLE", "UPDATED", "COMMENTS"}
+	} else if showUpdated {
+		headers = []string{"#", "SCORE", "LEVEL", "REPOSITORY", "ISSUE TITLE", "UPDATED"}
+	} else {
+		headers = []string{"#", "SCORE", "LEVEL", "REPOSITORY", "ISSUE TITLE"}
+	}
+
+	maxRepoLen := 22
+	maxTitleLen := 34
+	if termWidth >= 115 {
+		maxRepoLen = 28
+		maxTitleLen = 46
+	} else if termWidth >= 95 {
+		maxRepoLen = 24
+		maxTitleLen = 38
+	}
+
 	var rows [][]string
 
 	for idx, issue := range issues {
@@ -80,14 +121,15 @@ func RenderTable(w io.Writer, issues []models.Issue) {
 		// Level Badge
 		levelBadge := formatLevelBadge(issue.Difficulty)
 
-		// Repo with stars
+		// Repo with stars (truncated safely to prevent overflow)
 		repoDisplay := issue.RepoFullName
 		if issue.RepoStars > 0 {
 			repoDisplay = fmt.Sprintf("%s ★ %s", issue.RepoFullName, formatNumber(issue.RepoStars))
 		}
+		repoDisplay = truncate(repoDisplay, maxRepoLen)
 
-		// Title truncated if too long
-		title := truncate(issue.Title, 48)
+		// Title truncated dynamically based on screen width
+		title := truncate(issue.Title, maxTitleLen)
 
 		// Updated time
 		updated := formatRelativeTime(issue.UpdatedAt)
@@ -95,15 +137,16 @@ func RenderTable(w io.Writer, issues []models.Issue) {
 		// Comments
 		comments := fmt.Sprintf("%d", issue.CommentsCount)
 
-		rows = append(rows, []string{
-			numStr,
-			scoreStr,
-			levelBadge,
-			repoDisplay,
-			title,
-			updated,
-			comments,
-		})
+		var row []string
+		if showComments {
+			row = []string{numStr, scoreStr, levelBadge, repoDisplay, title, updated, comments}
+		} else if showUpdated {
+			row = []string{numStr, scoreStr, levelBadge, repoDisplay, title, updated}
+		} else {
+			row = []string{numStr, scoreStr, levelBadge, repoDisplay, title}
+		}
+
+		rows = append(rows, row)
 	}
 
 	t := table.New().
@@ -111,6 +154,8 @@ func RenderTable(w io.Writer, issues []models.Issue) {
 		BorderStyle(lipgloss.NewStyle().Foreground(primaryColor)).
 		Headers(headers...).
 		Rows(rows...).
+		Width(termWidth).
+		Wrap(false).
 		StyleFunc(func(row, col int) lipgloss.Style {
 			if row == table.HeaderRow {
 				return lipgloss.NewStyle().

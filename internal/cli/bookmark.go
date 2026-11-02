@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"github.com/charmbracelet/x/term"
 	"github.com/devradar/devradar/internal/output"
 	"github.com/devradar/devradar/pkg/models"
 	"github.com/spf13/cobra"
@@ -80,11 +81,21 @@ var savedCmd = &cobra.Command{
 			})
 		}
 
+		termWidth := 90
+		if w, _, err := term.GetSize(os.Stdout.Fd()); err == nil && w > 40 {
+			termWidth = w - 2
+			if termWidth > 120 {
+				termWidth = 120
+			}
+		}
+
 		t := table.New().
 			Border(lipgloss.RoundedBorder()).
 			BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("#6366f1"))).
 			Headers(headers...).
 			Rows(rows...).
+			Width(termWidth).
+			Wrap(false).
 			StyleFunc(func(row, col int) lipgloss.Style {
 				if row == table.HeaderRow {
 					return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#f8fafc")).Background(lipgloss.Color("#312e81")).Padding(0, 1)
